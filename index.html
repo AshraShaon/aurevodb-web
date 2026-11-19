@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AurevoDB — Damage-Aware Ransomware Containment for MongoDB</title>
+<meta name="description" content="AurevoDB scores ransomware damage in real time and contains it in graded steps — watch, throttle, suspend, isolate — then restores. Built and evaluated in an isolated lab on MongoDB Community.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">AurevoDB</span>
+    </a>
+    <nav class="nav-links" aria-label="Main">
+      <a href="#how">How it works</a>
+      <a href="#lab">Live Lab</a>
+      <a href="#results">Results</a>
+      <a href="#limits">Limits</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <a class="nav-cta" href="#lab">Try the Live Lab</a>
+  </div>
+</header>
+
+<main id="top">
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">MongoDB Community &middot; Isolated lab &middot; v6 evaluation</p>
+      <h1>Stop ransomware by<br>how much it can hurt,<br>not just that it exists.</h1>
+      <p class="hero-sub">AurevoDB watches MongoDB for destructive commands, scores the damage in real time, and contains the attack in graded steps — throttle, suspend, isolate — then restores what was lost. No binary alarm. A measured response.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#lab">Try the Live Lab</a>
+        <a class="btn btn-ghost" href="#results">Read the evaluation</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat"><span class="stat-num">+48.80</span><span class="stat-label">pooled points saved vs detect-only, v6<br>95% CI [44.99, 52.49], p=0.0001</span></div>
+        <div class="stat"><span class="stat-num">187/187</span><span class="stat-label">tests passing</span></div>
+        <div class="stat"><span class="stat-num">0/198</span><span class="stat-label">negative-save runs</span></div>
+        <div class="stat"><span class="stat-num">9/9 + 9/9</span><span class="stat-label">drop &amp; dropdb restores verified</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section id="how" class="section">
+    <div class="wrap">
+      <p class="section-eyebrow">How it works</p>
+      <h2>One score. Four responses. No guesswork.</h2>
+      <p class="section-lead">Every change-stream event feeds a damage-weighted score. The score — not a single rule — decides what happens next.</p>
+
+      <div class="score-formula">
+        <div class="formula-row"><span class="formula-weight">0.35</span><span class="formula-name">Destructive-command rate</span><span class="formula-desc">drop, dropDatabase and deleteMany commands per window</span></div>
+        <div class="formula-row"><span class="formula-weight">0.25</span><span class="formula-name">Collection churn</span><span class="formula-desc">how many collections are being hit, and how fast</span></div>
+        <div class="formula-row"><span class="formula-weight">0.25</span><span class="formula-name">Data volume at risk</span><span class="formula-desc">value-weighted documents — orders count more than inventory</span></div>
+        <div class="formula-row"><span class="formula-weight">0.15</span><span class="formula-name">Command rarity</span><span class="formula-desc">rare commands (drop, dropDatabase) score higher than routine writes</span></div>
+      </div>
+
+      <div class="bands">
+        <div class="band">
+          <div class="band-score">0 – 30</div>
+          <h3>Watch</h3>
+          <p>Score is tracked. Nothing is blocked. Normal traffic — bulk inserts, index builds, backups — stays under 30.</p>
+        </div>
+        <div class="band band-30">
+          <div class="band-score">≥ 30</div>
+          <h3>Throttle + snapshot</h3>
+          <p>Attacker sessions are throttled (killSessions) and a snapshot is taken on suspicion, so there is something to restore from.</p>
+        </div>
+        <div class="band band-60">
+          <div class="band-score">≥ 60</div>
+          <h3>Suspend + quarantine</h3>
+          <p>Writes are suspended and the attacker's role is revoked on the authenticated server — later batches fail with code 13.</p>
+        </div>
+        <div class="band band-85">
+          <div class="band-score">≥ 85</div>
+          <h3>Isolate + restore</h3>
+          <p>The database is write-locked (fsyncLock) and the snapshot is restored — staging copy first, rename-swap only on success, verified against recorded counts.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>What the lab proved about killing attacks:</strong> a <code>drop()</code> is not killable — killOp acknowledged, the drop still completed. killSessions interrupts one operation, not the session. So AurevoDB does not promise to kill a drop. It promises to detect it fast, limit what follows, and restore what was lost. That is the whole design.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIVE LAB ============ -->
+  <section id="lab" class="section section-lab">
+    <div class="wrap">
+      <p class="section-eyebrow">Live Lab</p>
+      <h2>Run the attack yourself.</h2>
+      <p class="section-lead">Pick an attack shape and a mode. The lab simulates the seeded database the v6 evaluation used — shop 10,000 docs with payments topped up to 20,000 (26,500 total) — scores every event with the real formula, and fires the real graded actions at 30 / 60 / 85.</p>
+      <p class="honest-label">Interactive simulation of the AurevoDB algorithm in your browser. Outcomes are calibrated to the v6 lab evaluation medians — this is not a live MongoDB server, and it is not the Python engine.</p>
+
+      <div class="lab">
+        <div class="lab-controls">
+          <div class="control-group">
+            <span class="control-label">Attack shape</span>
+            <div class="shape-grid" id="shapeGrid" role="group" aria-label="Attack shape"></div>
+          </div>
+          <div class="control-group">
+            <span class="control-label">Defence mode</span>
+            <div class="mode-toggle" role="group" aria-label="Defence mode">
+              <button type="button" class="mode-btn active" data-mode="graded">Graded containment</button>
+              <button type="button" class="mode-btn" data-mode="detect">Detect-only (no actions)</button>
+            </div>
+            <p class="mode-note" id="modeNote">Graded: throttle at 30, suspend at 60, isolate at 85, then restore.</p>
+          </div>
+          <div class="lab-actions">
+            <button type="button" class="btn btn-primary" id="runBtn">Run attack</button>
+            <button type="button" class="btn btn-ghost" id="resetBtn">Reset</button>
+          </div>
+          <div class="shape-info" id="shapeInfo"></div>
+        </div>
+
+        <div class="lab-main">
+          <div class="score-panel">
+            <div class="score-head">
+              <span class="score-label">Damage score</span>
+              <span class="score-band" id="scoreBand">Watch</span>
+            </div>
+            <div class="score-value" id="scoreValue">0.00</div>
+            <div class="score-bar"><div class="score-fill" id="scoreFill"></div><span class="score-tick" style="left:30%"></span><span class="score-tick" style="left:60%"></span><span class="score-tick" style="left:85%"></span></div>
+            <div class="score-ticks"><span>0</span><span>30</span><span>60</span><span>85</span><span>100</span></div>
+            <div class="components">
+              <div class="comp"><span>Destructive-command rate</span><div class="comp-bar"><div id="compDcr"></div></div><b id="compDcrV">0</b></div>
+              <div class="comp"><span>Collection churn</span><div class="comp-bar"><div id="compChurn"></div></div><b id="compChurnV">0</b></div>
+              <div class="comp"><span>Data volume at risk</span><div class="comp-bar"><div id="compVol"></div></div><b id="compVolV">0</b></div>
+              <div class="comp"><span>Command rarity</span><div class="comp-bar"><div id="compRare"></div></div><b id="compRareV">0</b></div>
+            </div>
+          </div>
+
+          <div class="collections-panel">
+            <span class="panel-label">Shop database — 26,500 documents (seeded like v6)</span>
+            <div id="collections"></div>
+          </div>
+
+          <div class="feed-panel">
+            <span class="panel-label">Event feed</span>
+            <div class="feed" id="feed" aria-live="polite"><div class="feed-line feed-dim">No attack running. Pick a shape and press Run attack.</div></div>
+          </div>
+        </div>
+
+        <div class="lab-result" id="labResult" hidden>
+          <h3>Run result</h3>
+          <div class="result-grid">
+            <div class="result-cell"><span class="result-num" id="resSaved">—</span><span class="result-label">saved by prevention</span></div>
+            <div class="result-cell"><span class="result-num" id="resRecovered">—</span><span class="result-label">recovered via restore</span></div>
+            <div class="result-cell"><span class="result-num" id="resLost">—</span><span class="result-label">value-weighted loss</span></div>
+            <div class="result-cell"><span class="result-num" id="resCtd">—</span><span class="result-label">commands to detect</span></div>
+          </div>
+          <p class="result-compare" id="resCompare"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" class="section">
+    <div class="wrap">
+      <p class="section-eyebrow">Results — v6 evaluation</p>
+      <h2>The numbers, all of them.</h2>
+      <p class="section-lead">426 attack runs + 48 benign runs + 18 restore runs, fresh seeds 11 / 42 / 777, on the authenticated mongod by default. Medians per shape, graded containment vs detect-only (which saved 0% everywhere).</p>
+
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead><tr><th>Attack shape</th><th>Saved by prevention — median</th><th>Mean</th><th>Zero-save runs</th></tr></thead>
+          <tbody>
+            <tr><td>Fast drop</td><td><strong>71.92%</strong></td><td>71.47%</td><td>0 / 45</td></tr>
+            <tr><td>Fast delete</td><td><strong>54.08%</strong></td><td>48.89%</td><td>3 / 45</td></tr>
+            <tr><td>Slow delete</td><td><strong>68.00%</strong></td><td>68.00%</td><td>0 / 27</td></tr>
+            <tr><td>Sustained</td><td><strong>60.00%</strong></td><td>58.52%</td><td>0 / 27</td></tr>
+            <tr><td>Interleaved</td><td><strong>32.60%</strong></td><td>30.72%</td><td>1 / 27</td></tr>
+            <tr><td>dropdb</td><td><strong>0.00%</strong></td><td>0.00%</td><td>27 / 27 — by design</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="pooled">
+        <div class="pooled-cell"><span class="pooled-num">+48.80</span><span class="pooled-label">pooled graded vs detect-only<br>95% CI [44.99, 52.49], p=0.0001, n=198</span></div>
+        <div class="pooled-cell"><span class="pooled-num">+29.68</span><span class="pooled-label">pooled graded vs single-rule baseline<br>95% CI [16.52, 43.24], p=0.0008, n=18 — first fully-powered win</span></div>
+        <div class="pooled-cell"><span class="pooled-num">0/198</span><span class="pooled-label">negative-save runs — the defence never made anything worse</span></div>
+      </div>
+
+      <h3 class="subhead">Progression across versions</h3>
+      <div class="progression" id="progression"></div>
+      <p class="fineprint">Pooled graded-vs-detect-only points per version. v5 pooled only the two fast shapes (+42.74) — it is not comparable to the all-six-shape numbers. v6 pools all six shapes again.</p>
+
+      <h3 class="subhead">Restore, verified end to end</h3>
+      <div class="restore-grid">
+        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">drop restores verified — 26,500 records each<br>median restore 2,851.4 ms</span></div>
+        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">dropdb restores verified — 26,500 records each<br>median restore 2,669.2 ms</span></div>
+        <div class="restore-cell"><span class="restore-num">6/6</span><span class="restore-label">live isolate restores in v6 — 0 collections lost, 0 documents lost, 116,780 records recovered (Finding 11 fix re-confirmed)</span></div>
+        <div class="restore-cell"><span class="restore-num">64</span><span class="restore-label">verified role revokes on the main graded path — 615 attacker batches failed with code 13</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LIMITS ============ -->
+  <section id="limits" class="section">
+    <div class="wrap">
+      <p class="section-eyebrow">Honest limits</p>
+      <h2>What it does not do.</h2>
+      <p class="section-lead">A product page that hides its limits is a brochure. These are measured, and they stay in the report.</p>
+      <ul class="limits-list">
+        <li><strong>dropdb prevention is 0% by design.</strong> A <code>dropDatabase</code> cannot be killed. The answer is verified fast restore (median 2,669.2 ms) plus least-privilege roles, not prevention.</li>
+        <li><strong>Steady overhead is +242.8% mongod CPU.</strong> The ≤+43% target was proven unreachable: priming off still costs +49.1%, and only the 0.02&nbsp;s priming rate keeps fast-delete alive.</li>
+        <li><strong>Undeclared maintenance looks like an attack.</strong> A bulk-delete purge trips the alarm 3/3 times, and an orders drop-and-recreate 3/3 times. Declared maintenance is exempt and scores 0/18 false positives — undeclared work is not.</li>
+        <li><strong>Finding 10 is bounded, not solved.</strong> Fast-delete delivery stalls move between seeds (v4: seed 42, v5: seed 777). The stall decomposes into majority-commit visibility and pure change-stream lag inside the server; the 8-minute clustering never reproduced.</li>
+        <li><strong>Damage-prevented % is an upper bound.</strong> The emulator is not validated against real ransomware traces, and the lab baselines flatter the system. The report states this in full.</li>
+        <li><strong>Interleaved attacks are the weakest shape</strong> at 32.60% median — mixed, pausing attacks are the hardest to contain.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ DOCS ============ -->
+  <section id="docs" class="section">
+    <div class="wrap">
+      <p class="section-eyebrow">Docs &amp; report</p>
+      <h2>Everything is open to check.</h2>
+      <p class="section-lead">The full evaluation report is 37,052 words with a 491-word abstract — every headline number in it traces back to a results file. The lab code, evaluation scripts and this website are public.</p>
+      <div class="docs-grid">
+        <a class="doc-card" href="https://github.com/AshraShaon/aurevodb-web" target="_blank" rel="noopener">
+          <span class="doc-title">aurevodb-web on GitHub</span>
+          <span class="doc-desc">This website and the Live Lab source. Static HTML, CSS and vanilla JavaScript — no build step, no framework.</span>
+        </a>
+        <div class="doc-card">
+          <span class="doc-title">Evaluation report — v6</span>
+          <span class="doc-desc">37,052 words. Six rounds of evaluation (v1–v6), eleven findings with statuses, full statistics and appendices. Available with the project.</span>
+        </div>
+        <div class="doc-card">
+          <span class="doc-title">DIU final-year project</span>
+          <span class="doc-desc">Real-Time Damage-Aware Detection and Graded Containment of Ransomware Attacks on MongoDB in an Isolated Lab. Ashraful Islam Shaon, Daffodil International University.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div>
+      <span class="brand-name">AurevoDB</span>
+      <p class="footer-note">Damage-aware detection and graded containment for MongoDB ransomware — built and evaluated in an isolated lab.</p>
+    </div>
+    <div class="footer-meta">
+      <span>DIU final-year project</span>
+      <span>Ashraful Islam Shaon</span>
+      <span>MongoDB Community 8.0.12 &middot; Python &middot; No real ransomware was used</span>
+    </div>
+  </div>
+</footer>
+
+<script src="lab.js"></script>
+</body>
+</html>
