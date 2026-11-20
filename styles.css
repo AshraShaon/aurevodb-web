@@ -178,12 +178,13 @@ code { font-family: var(--mono); font-size: 0.85em; background: rgba(255,255,255
 .pooled-cell { border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; background: var(--bg-soft); }
 .pooled-num { display: block; font-size: 34px; font-weight: 800; letter-spacing: -0.03em; }
 .pooled-label { display: block; color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.5; }
-.progression { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; align-items: end; }
+.progression { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; align-items: end; }
 .prog-cell { text-align: center; }
 .prog-bar-wrap { height: 160px; display: flex; align-items: flex-end; }
 .prog-bar { width: 100%; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, var(--blue), rgba(44,146,229,0.35)); }
 .prog-bar.v5 { background: linear-gradient(180deg, var(--magenta), rgba(237,31,158,0.35)); }
 .prog-bar.v6 { background: linear-gradient(180deg, var(--magenta), var(--blue)); }
+.prog-bar.v7 { background: linear-gradient(180deg, var(--magenta), var(--blue)); }
 .prog-val { display: block; font-weight: 800; font-size: 16px; margin-top: 10px; }
 .prog-ver { display: block; color: var(--muted); font-size: 13px; }
 .prog-note { display: block; color: var(--faint); font-size: 11px; margin-top: 2px; }

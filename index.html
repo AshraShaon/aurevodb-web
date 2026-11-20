@@ -29,7 +29,7 @@
   <!-- ============ HERO ============ -->
   <section class="hero">
     <div class="hero-inner">
-      <p class="eyebrow">MongoDB Community &middot; Isolated lab &middot; v6 evaluation</p>
+      <p class="eyebrow">MongoDB Community &middot; Isolated lab &middot; v7 evaluation &middot; v8 probe</p>
       <h1>Stop ransomware by<br>how much it can hurt,<br>not just that it exists.</h1>
       <p class="hero-sub">AurevoDB watches MongoDB for destructive commands, scores the damage in real time, and contains the attack in graded steps — throttle, suspend, isolate — then restores what was lost. No binary alarm. A measured response.</p>
       <div class="hero-ctas">
@@ -37,8 +37,8 @@
         <a class="btn btn-ghost" href="#results">Read the evaluation</a>
       </div>
       <div class="hero-stats">
-        <div class="stat"><span class="stat-num">+48.80</span><span class="stat-label">pooled points saved vs detect-only, v6<br>95% CI [44.99, 52.49], p=0.0001</span></div>
-        <div class="stat"><span class="stat-num">187/187</span><span class="stat-label">tests passing</span></div>
+        <div class="stat"><span class="stat-num">+48.22</span><span class="stat-label">pooled points saved vs detect-only, v7<br>95% CI [44.33, 51.89], p=0.0001</span></div>
+        <div class="stat"><span class="stat-num">199/199</span><span class="stat-label">tests passing</span></div>
         <div class="stat"><span class="stat-num">0/198</span><span class="stat-label">negative-save runs</span></div>
         <div class="stat"><span class="stat-num">9/9 + 9/9</span><span class="stat-label">drop &amp; dropdb restores verified</span></div>
       </div>
@@ -93,8 +93,8 @@
     <div class="wrap">
       <p class="section-eyebrow">Live Lab</p>
       <h2>Run the attack yourself.</h2>
-      <p class="section-lead">Pick an attack shape and a mode. The lab simulates the seeded database the v6 evaluation used — shop 10,000 docs with payments topped up to 20,000 (26,500 total) — scores every event with the real formula, and fires the real graded actions at 30 / 60 / 85.</p>
-      <p class="honest-label">Interactive simulation of the AurevoDB algorithm in your browser. Outcomes are calibrated to the v6 lab evaluation medians — this is not a live MongoDB server, and it is not the Python engine.</p>
+      <p class="section-lead">Pick an attack shape and a mode. The lab simulates the seeded database the v7 evaluation used — shop 10,000 docs with payments topped up to 20,000 (26,500 total) — scores every event with the real formula, and fires the real graded actions at 30 / 60 / 85. The write-lock is held 3.0&nbsp;s, as frozen in v7.</p>
+      <p class="honest-label">Interactive simulation of the AurevoDB algorithm in your browser. Outcomes are calibrated to the v7 lab evaluation medians — this is not a live MongoDB server, and it is not the Python engine.</p>
 
       <div class="lab">
         <div class="lab-controls">
@@ -135,7 +135,7 @@
           </div>
 
           <div class="collections-panel">
-            <span class="panel-label">Shop database — 26,500 documents (seeded like v6)</span>
+            <span class="panel-label">Shop database — 26,500 documents (seeded like v7)</span>
             <div id="collections"></div>
           </div>
 
@@ -162,40 +162,41 @@
   <!-- ============ RESULTS ============ -->
   <section id="results" class="section">
     <div class="wrap">
-      <p class="section-eyebrow">Results — v6 evaluation</p>
+      <p class="section-eyebrow">Results — v7 evaluation + v8 probe</p>
       <h2>The numbers, all of them.</h2>
-      <p class="section-lead">426 attack runs + 48 benign runs + 18 restore runs, fresh seeds 11 / 42 / 777, on the authenticated mongod by default. Medians per shape, graded containment vs detect-only (which saved 0% everywhere).</p>
+      <p class="section-lead">426 attack runs + 48 benign runs + 18 restore runs, fresh seeds 11 / 42 / 777, on the authenticated mongod by default. Medians per shape, graded containment vs detect-only (which saved 0% everywhere). v7 changed two things: the write-lock hold 1.0&nbsp;s → 3.0&nbsp;s, and the (b2) false-positive gate. The v8 probe (369 graded runs, holds 1.0 / 2.0 / 3.0, matched seeds) then tested whether the hold explains the fast-delete move.</p>
 
       <div class="results-table-wrap">
         <table class="results-table">
           <thead><tr><th>Attack shape</th><th>Saved by prevention — median</th><th>Mean</th><th>Zero-save runs</th></tr></thead>
           <tbody>
-            <tr><td>Fast drop</td><td><strong>71.92%</strong></td><td>71.47%</td><td>0 / 45</td></tr>
-            <tr><td>Fast delete</td><td><strong>54.08%</strong></td><td>48.89%</td><td>3 / 45</td></tr>
+            <tr><td>Fast drop</td><td><strong>73.62%</strong></td><td>72.32%</td><td>0 / 45</td></tr>
+            <tr><td>Fast delete</td><td><strong>29.54%</strong></td><td>32.94%</td><td>6 / 45</td></tr>
             <tr><td>Slow delete</td><td><strong>68.00%</strong></td><td>68.00%</td><td>0 / 27</td></tr>
-            <tr><td>Sustained</td><td><strong>60.00%</strong></td><td>58.52%</td><td>0 / 27</td></tr>
-            <tr><td>Interleaved</td><td><strong>32.60%</strong></td><td>30.72%</td><td>1 / 27</td></tr>
+            <tr><td>Sustained</td><td><strong>60.00%</strong></td><td>59.26%</td><td>0 / 27</td></tr>
+            <tr><td>Interleaved</td><td><strong>57.64%</strong></td><td>50.91%</td><td>1 / 27</td></tr>
             <tr><td>dropdb</td><td><strong>0.00%</strong></td><td>0.00%</td><td>27 / 27 — by design</td></tr>
           </tbody>
         </table>
       </div>
+      <p class="fineprint">Fast delete is the least stable number on this page: v7 reads 29.54%, but the v8 probe measured 39.21% at the same hold 3.0 and 47.50% at hold 1.0 on matched seeds — paired difference −4.83, p=0.766, i.e. noise. The shape spans 0–83% run to run. Do not quote 29.54% as a stable median; the probe is the better guide, and it says the hold is not the cause.</p>
 
       <div class="pooled">
-        <div class="pooled-cell"><span class="pooled-num">+48.80</span><span class="pooled-label">pooled graded vs detect-only<br>95% CI [44.99, 52.49], p=0.0001, n=198</span></div>
-        <div class="pooled-cell"><span class="pooled-num">+29.68</span><span class="pooled-label">pooled graded vs single-rule baseline<br>95% CI [16.52, 43.24], p=0.0008, n=18 — first fully-powered win</span></div>
+        <div class="pooled-cell"><span class="pooled-num">+48.22</span><span class="pooled-label">pooled graded vs detect-only<br>95% CI [44.33, 51.89], p=0.0001, n=198</span></div>
+        <div class="pooled-cell"><span class="pooled-num">+33.47</span><span class="pooled-label">pooled graded vs single-rule baseline<br>95% CI [20.09, 46.68], p=0.0004, n=18</span></div>
         <div class="pooled-cell"><span class="pooled-num">0/198</span><span class="pooled-label">negative-save runs — the defence never made anything worse</span></div>
       </div>
 
       <h3 class="subhead">Progression across versions</h3>
       <div class="progression" id="progression"></div>
-      <p class="fineprint">Pooled graded-vs-detect-only points per version. v5 pooled only the two fast shapes (+42.74) — it is not comparable to the all-six-shape numbers. v6 pools all six shapes again.</p>
+      <p class="fineprint">Pooled graded-vs-detect-only points per version. v5 pooled only the two fast shapes (+42.74) — it is not comparable to the all-six-shape numbers. v7 pools all six shapes again; the v8 probe ran no full evaluation, so there is no v8 pooled number.</p>
 
       <h3 class="subhead">Restore, verified end to end</h3>
       <div class="restore-grid">
-        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">drop restores verified — 26,500 records each<br>median restore 2,851.4 ms</span></div>
-        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">dropdb restores verified — 26,500 records each<br>median restore 2,669.2 ms</span></div>
-        <div class="restore-cell"><span class="restore-num">6/6</span><span class="restore-label">live isolate restores in v6 — 0 collections lost, 0 documents lost, 116,780 records recovered (Finding 11 fix re-confirmed)</span></div>
-        <div class="restore-cell"><span class="restore-num">64</span><span class="restore-label">verified role revokes on the main graded path — 615 attacker batches failed with code 13</span></div>
+        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">drop restores verified — 26,500 records each<br>median restore 2,502.5 ms</span></div>
+        <div class="restore-cell"><span class="restore-num">9/9</span><span class="restore-label">dropdb restores verified — 26,500 records each<br>median restore 1,766.0 ms</span></div>
+        <div class="restore-cell"><span class="restore-num">2/2</span><span class="restore-label">live isolate restores in v7 — 0 collections lost, 0 documents lost, 40,230 records recovered (Finding 11 fix re-confirmed)</span></div>
+        <div class="restore-cell"><span class="restore-num">61</span><span class="restore-label">verified role revokes on the main graded path — 621 attacker batches failed with code 13</span></div>
       </div>
     </div>
   </section>
@@ -207,12 +208,14 @@
       <h2>What it does not do.</h2>
       <p class="section-lead">A product page that hides its limits is a brochure. These are measured, and they stay in the report.</p>
       <ul class="limits-list">
-        <li><strong>dropdb prevention is 0% by design.</strong> A <code>dropDatabase</code> cannot be killed. The answer is verified fast restore (median 2,669.2 ms) plus least-privilege roles, not prevention.</li>
-        <li><strong>Steady overhead is +242.8% mongod CPU.</strong> The ≤+43% target was proven unreachable: priming off still costs +49.1%, and only the 0.02&nbsp;s priming rate keeps fast-delete alive.</li>
-        <li><strong>Undeclared maintenance looks like an attack.</strong> A bulk-delete purge trips the alarm 3/3 times, and an orders drop-and-recreate 3/3 times. Declared maintenance is exempt and scores 0/18 false positives — undeclared work is not.</li>
-        <li><strong>Finding 10 is bounded, not solved.</strong> Fast-delete delivery stalls move between seeds (v4: seed 42, v5: seed 777). The stall decomposes into majority-commit visibility and pure change-stream lag inside the server; the 8-minute clustering never reproduced.</li>
+        <li><strong>dropdb prevention is 0% by design.</strong> A <code>dropDatabase</code> cannot be killed. The answer is verified fast restore (median 1,766.0 ms) plus least-privilege roles, not prevention.</li>
+        <li><strong>Steady overhead is +242.8% mongod CPU.</strong> The ≤+43% target was proven unreachable: priming off still costs +49.1%, and only the 0.02&nbsp;s priming rate keeps fast-delete alive. Not re-measured in v7; the v4 numbers stand.</li>
+        <li><strong>Undeclared maintenance still looks like an attack — the v7 gate only halves it.</strong> The (b2) false-positive gate blocks escalations until ≥2 destructive bursts or one burst ≥1,000 value-weighted docs, and it halves FP escalations 6/18 → 3/18: a bulk-delete purge now escalates 0/3 times (the gate blocks it), but an orders drop-and-recreate still escalates 3/3 — one drop of 4,000 documents is a single burst of 4,000 value-weighted docs, above the threshold. The score itself still trips 3/3 on both workloads; the gate blocks actions, not the alarm. Declared maintenance is exempt and scores 0/18 false positives — undeclared work is not.</li>
+        <li><strong>Fast delete is the least stable number: v7 median 29.54%, v6 was 54.08% — and the v8 probe says the hold is not the cause.</strong> At matched seeds, hold 3.0 vs 1.0 moves fast delete by −4.83 median points (paired, p=0.766) — noise. The lock never touches this attack at all: 0/135 batches start while locked, because the two deleteManys finish in ~0.5&nbsp;s while the first lock verifies ~1.8–2.0&nbsp;s after attack start. Saved % is set entirely by the first throttle kill interrupting the payments deleteMany. Any fix must move the first kill, not the lock — and no config change shipped (hold stays 3.0; reverting would cost interleaved ~22 points for a gain that is not established).</li>
+        <li><strong>Finding 14 — the FP gate can block a real attack (small).</strong> In the v8 probe, slow at hold 3.0 had its N-escalation write-lock blocked by the gate in 2/27 runs (0/27 at hold 1.0). Saved % was unaffected — 68.00% either way, because the revoke, not the lock, saves slow.</li>
         <li><strong>Damage-prevented % is an upper bound.</strong> The emulator is not validated against real ransomware traces, and the lab baselines flatter the system. The report states this in full.</li>
-        <li><strong>Interleaved attacks are the weakest shape</strong> at 32.60% median — mixed, pausing attacks are the hardest to contain.</li>
+        <li><strong>Interleaved is no longer the weakest shape.</strong> 57.64% median in v7 (v6: 32.60%) — the 3.0&nbsp;s write-lock hold is the mechanism, dose-dependent: batches started while locked rise 45 → 66 → 89 across holds 1.0 / 2.0 / 3.0 in the v8 probe.</li>
+        <li><strong>Late write-locks delayed two post-run probe writes in v7 (2/426 runs).</strong> A lock decision made just before watch-stop executed 1.6&nbsp;s and 3.4&nbsp;s late. The server was never left locked — every lock has a matching verified unlock. A measurement race, not a defence failure.</li>
       </ul>
     </div>
   </section>
@@ -222,15 +225,15 @@
     <div class="wrap">
       <p class="section-eyebrow">Docs &amp; report</p>
       <h2>Everything is open to check.</h2>
-      <p class="section-lead">The full evaluation report is 37,052 words with a 491-word abstract — every headline number in it traces back to a results file. The lab code, evaluation scripts and this website are public.</p>
+      <p class="section-lead">The full evaluation report is 38,225 words with a 473-word abstract — every headline number in it traces back to a results file. The lab code, evaluation scripts and this website are public.</p>
       <div class="docs-grid">
         <a class="doc-card" href="https://github.com/AshraShaon/aurevodb-web" target="_blank" rel="noopener">
           <span class="doc-title">aurevodb-web on GitHub</span>
           <span class="doc-desc">This website and the Live Lab source. Static HTML, CSS and vanilla JavaScript — no build step, no framework.</span>
         </a>
         <div class="doc-card">
-          <span class="doc-title">Evaluation report — v6</span>
-          <span class="doc-desc">37,052 words. Six rounds of evaluation (v1–v6), eleven findings with statuses, full statistics and appendices. Available with the project.</span>
+          <span class="doc-title">Evaluation report — v7 + v8 probe</span>
+          <span class="doc-desc">38,225 words. Seven rounds of evaluation (v1–v7) plus the v8 hold probe, fourteen findings with statuses, full statistics and appendices. Available with the project.</span>
         </div>
         <div class="doc-card">
           <span class="doc-title">DIU final-year project</span>

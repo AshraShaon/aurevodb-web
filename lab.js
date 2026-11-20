@@ -1,39 +1,57 @@
 /* AurevoDB Live Lab — in-browser simulation of the AurevoDB algorithm.
  *
  * Faithful to the lab where it matters, calibrated where timing is a race:
- *  - the REAL scoring formula (frozen v6 weights, 1 s rolling window,
- *    accumulator 10 s >= 400 / 60 s >= 1000 value-weighted docs)
+ *  - the REAL scoring formula (frozen v7 weights, unchanged from v6,
+ *    1 s rolling window, accumulator 10 s >= 400 / 60 s >= 1000
+ *    value-weighted docs)
  *  - the REAL attack command scripts from evaluation/run_evaluation.py
+ *    (interleaved batches 350 ms apart, as in the lab — not 700 ms)
  *  - the REAL graded bands (30 throttle / 60 suspend / 85 isolate)
- *  - seeded exactly like the v6 evaluation: shop 10,000 docs, payments
+ *  - the REAL v7 write-lock hold: 3.0 s (was 1.0 s in v6). A batch
+ *    issued while the lock is held stalls in currentOp instead of
+ *    vanishing — the re-kill interrupts it there, which is the v7
+ *    interleaved mechanism (v8 probe: batches started while locked
+ *    45 -> 66 -> 89 across holds 1.0 / 2.0 / 3.0)
+ *  - seeded exactly like the v7 evaluation: shop 10,000 docs, payments
  *    topped up to 20,000 (26,500 total); attempted docs per shape are
  *    the lab's ATTEMPTED values
  *  - saved % uses the lab metric: final docs present vs a no-defence
  *    run, over attempted docs
  *
- * Calibrated timing constants (fitted to the v6 medians and decision
+ * Calibrated timing constants (fitted to the v7 medians and decision
  * timelines; the mechanisms are real, the exact delays are fitted):
  *  - change-stream delivery: single control events ~30 ms, bulk delete
- *    streams ~80 ms (lab delivery median 52.85 ms, tail to 2.4 s)
+ *    streams ~115 ms (lab fast_delete delivery median 116.0 ms in v7)
  *  - killSessions lands ~1 ms after the throttle issues, on the op
  *    that is active in the attacker session at that moment; a 23 ms
  *    batch is already finished by the time the watcher sees it
  *  - revoke lands ~2.0 s after suspend (slow) / ~3.4 s (sustained);
- *    write-lock lands ~2.7 s after first throttle (interleaved)
+ *    write-lock lands ~0.6 s after suspend (interleaved, first
+ *    write_lock median 983.6 ms) and is held 3.0 s
  *  - the ransom note usually arrives after the 1 s window moved on
- *    in fast_drop (isolate in 6/45 runs); in fast_delete it arrives
- *    inside the window (max score 73.74 recurring)
+ *    in fast_drop (isolate in 2/45 runs in v7, was 6/45 in v6)
+ *  - fast_delete is deliberately NOT tuned to the v7 median 29.54%:
+ *    the v8 probe (369 runs, matched seeds) reads 39.21% at the same
+ *    hold 3.0 and 47.50% at hold 1.0 — the shape spans 0-83% run to
+ *    run, and no hold effect exists (paired -4.83, p=0.766). The sim
+ *    lands in that range; the page says so next to the number.
+ *
+ * The (b2) FP gate (v7: escalate past throttle only on >= 2 bursts
+ * or one burst >= 1,000 vw-docs) is NOT simulated: it blocked 0
+ * attack escalations in the v7 evaluation's 198 graded runs, so it
+ * changes nothing on the attack shapes. It is described on the page.
  *
  * This is NOT a live MongoDB server and NOT the Python engine.
- * Outcomes land near the v6 lab medians; every run shows the lab
+ * Outcomes land near the v7 lab medians; every run shows the lab
  * median next to its own result.
  */
 (function () {
   'use strict';
 
-  /* ---------- frozen v6 config ---------- */
+  /* ---------- frozen v7 config ---------- */
   var W = { dcr: 0.35, churn: 0.25, vol: 0.25, rare: 0.15 };
   var WINDOW_S = 1.0;
+  var HOLD_S = 3.0; /* write_lock_hold_seconds, frozen v7 (was 1.0 in v6) */
   var DCR_SCALE = 200, CHURN_SCALE = 4, RARITY_SCALE = 2;
   var TOTAL_VW = 8280; /* shop baseline value-weighted docs (config) */
   var ACC10_T = 400, ACC60_T = 1000; /* vw-docs */
@@ -49,22 +67,22 @@
   };
   var COLL_ORDER = ['customers', 'products', 'orders', 'payments', 'inventory'];
   var ATTEMPTED = { fast_drop: 24000, fast_delete: 24000, slow_delete: 2000, sustained: 2000, interleaved: 20800, dropdb: 26500 };
-  var LAB_MEDIAN = { fast_drop: 71.92, fast_delete: 54.08, slow_delete: 68.00, sustained: 60.00, interleaved: 32.60, dropdb: 0.00 };
-  var LAB_TTA = { fast_drop: 36.1, fast_delete: 110.8, slow_delete: 6215.7, sustained: 55.1, interleaved: 446.9, dropdb: 63.0 };
-  /* suspend -> stop delay per shape (revoke unless noted), fitted to v6 */
-  var STOP_DELAY = { slow_delete: 2400, sustained: 3400, interleaved: 2700 };
+  var LAB_MEDIAN = { fast_drop: 73.62, fast_delete: 29.54, slow_delete: 68.00, sustained: 60.00, interleaved: 57.64, dropdb: 0.00 };
+  var LAB_TTA = { fast_drop: 40.9, fast_delete: 123.1, slow_delete: 6259.3, sustained: 57.5, interleaved: 424.5, dropdb: 53.2 };
+  /* suspend -> stop delay per shape (revoke unless noted), fitted to v7 */
+  var STOP_DELAY = { slow_delete: 2400, sustained: 3400, interleaved: 600 }; /* interleaved: first write_lock median 983.6 ms in v7 (spread 753-11,099 ms) */
 
   var SHAPES = {
     fast_drop: { name: 'Fast drop', median: LAB_MEDIAN.fast_drop, speed: 0.5, speedLabel: 'slow motion 0.5×',
       desc: 'drop orders, then deleteMany payments. The throttle usually kills the payments delete — the drop itself is unkillable.' },
     fast_delete: { name: 'Fast delete', median: LAB_MEDIAN.fast_delete, speed: 0.5, speedLabel: 'slow motion 0.5×',
-      desc: 'deleteMany orders, then deleteMany payments. Two mass deletes back to back; the kill has to land mid-wipe.' },
+      desc: 'deleteMany orders, then deleteMany payments. Two mass deletes back to back; the kill has to land mid-wipe. The least stable shape — v7 median 29.54%, but the v8 probe reads 39.21% at the same hold: the number moves between periods, range 0–83%.' },
     slow_delete: { name: 'Slow delete', median: LAB_MEDIAN.slow_delete, speed: 5, speedLabel: 'time-compressed 5×',
       desc: '25 batches of 80 payments docs, 1.2 s apart. Instant score stays ~14 — the accumulator catches it, then the role revoke stops it.' },
     sustained: { name: 'Sustained', median: LAB_MEDIAN.sustained, speed: 2, speedLabel: 'time-compressed 2×',
       desc: '10 batches of 200 payments docs, 1.0 s apart. Per-window score ~35 sits in the throttle band until the revoke lands.' },
     interleaved: { name: 'Interleaved', median: LAB_MEDIAN.interleaved, speed: 1, speedLabel: 'real time 1×',
-      desc: 'drop products, then 7 delete batches of 3,000 payments docs with benign traffic in between. The weakest shape — fast batches finish before the kill lands.' },
+      desc: 'drop products, then 7 delete batches of 3,000 payments docs, 350 ms apart, with benign traffic in between. The v7 win: the 3.0 s write-lock hold stalls batches where the re-kill catches them — 57.64% median, up from 32.60% in v6.' },
     dropdb: { name: 'dropdb', median: LAB_MEDIAN.dropdb, speed: 0.5, speedLabel: 'slow motion 0.5×',
       desc: 'dropDatabase — the whole database in one command. Prevention is 0% by design. The answer is the periodic snapshot restore.' }
   };
@@ -101,8 +119,8 @@
       cmds.push({ t: 10 * 1000, type: 'ransom' });
     } else if (shape === 'interleaved') {
       cmds.push({ t: 0, type: 'drop', coll: 'products' });
-      for (var k = 0; k < 7; k++) cmds.push({ t: 350 + k * 700, type: 'deleteBatch', coll: 'payments', docs: 3000 });
-      cmds.push({ t: 350 + 7 * 700, type: 'ransom' });
+      for (var k = 0; k < 7; k++) cmds.push({ t: 350 + k * 350, type: 'deleteBatch', coll: 'payments', docs: 3000 });
+      cmds.push({ t: 350 + 7 * 350, type: 'ransom' });
     } else if (shape === 'dropdb') {
       cmds.push({ t: 0, type: 'dropDatabase' });
       cmds.push({ t: 120, type: 'deleteMany', coll: 'payments' });
@@ -115,9 +133,9 @@
   function simulate(shape, mode, seed) {
     var rng = mulberry32(seed);
     var dDrop = 30 + (rng() - 0.5) * 20;      /* delivery lag, control events */
-    var dStream = 80 + (rng() - 0.5) * 50;    /* delivery lag, bulk deletes */
+    var dStream = 115 + (rng() - 0.5) * 50;   /* delivery lag, bulk deletes (v7: fast_delete delivery median 116.0 ms) */
     var stopDelay = (STOP_DELAY[shape] || 2200) + (rng() - 0.5) * 600;
-    var noteLate = shape === 'fast_drop' ? rng() > 0.13 : false; /* isolate in ~13% of fast_drop runs */
+    var noteLate = shape === 'fast_drop' ? rng() > 0.044 : false; /* isolate in ~4.4% of fast_drop runs (v7: 2/45) */
     var tick = 10; /* sim ms per step */
 
     var docs = {};
@@ -136,7 +154,7 @@
     var snapshot = null, snapshotCopy = null;
     var periodicSnapshot = { kind: 'periodic', counts: {} };
     COLL_ORDER.forEach(function (c) { periodicSnapshot.counts[c] = docs[c]; });
-    var killAt = null, lastKill = -1e9, stopAt = null, pendingRestore = false, restoreDone = false;
+    var killAt = null, lastKill = -1e9, stopAt = null, lockUntil = null, pendingRestore = false, pendingRansom = false, restoreDone = false;
     var bandStreak = 0;
     var detectedAt = null, cmdsToDetect = null;
     var lostDocs = 0, recoveredDocs = 0, recoveredVolume = 0, restoredNet = 0;
@@ -243,7 +261,32 @@
       /* --- scheduled commands fire --- */
       while (cmdIdx < cmds.length && cmds[cmdIdx].t <= now) {
         var cmd = cmds[cmdIdx++];
-        if (isolated || locked) { addLog(now, 'info', 'Blocked: ' + cmdLabel(cmd) + (isolated ? ' — database isolated.' : ' — write-lock held.')); continue; }
+        if (isolated) { addLog(now, 'info', 'Blocked: ' + cmdLabel(cmd) + ' — database isolated.'); continue; }
+        if (locked) {
+          if (cmd.type === 'deleteMany' || cmd.type === 'deleteBatch') {
+            /* v7: a delete issued while the write-lock is held does not
+               vanish — it stalls in currentOp, blocked, deleting
+               nothing, where the re-kill can interrupt it once it is
+               visible (lab: a stalled op lives in currentOp 450-811 ms;
+               a longer hold stalls more batches where the re-kill
+               catches them). If the kill never lands it resumes after
+               the lock releases. */
+            var rem = Math.min(cmd.docs || docs[cmd.coll], docs[cmd.coll]);
+            if (rem > 0) {
+              active = { coll: cmd.coll, remaining: rem, label: cmdLabel(cmd), visibleAt: now + dStream, stalled: true };
+              addLog(now, 'info', cmdLabel(cmd) + ' stalled on the write-lock — ' + fmt(rem) + ' docs blocked, waiting for the lock or the re-kill.');
+            }
+            continue;
+          }
+          if (cmd.type === 'ransom') {
+            /* the note blocks on the lock too; it lands when the lock releases */
+            pendingRansom = true;
+            addLog(now, 'info', 'Ransom note delayed — write-lock held.');
+            continue;
+          }
+          addLog(now, 'info', 'Blocked: ' + cmdLabel(cmd) + ' — write-lock held.');
+          continue;
+        }
         if (revoked) { addLog(now, 'bad', 'FAILED code 13 — ' + cmdLabel(cmd) + ' refused: role revoked.'); continue; }
         if (cmd.type === 'drop') {
           var lost = docs[cmd.coll];
@@ -274,12 +317,28 @@
       if (stopAt !== null && now >= stopAt && !revoked && !locked) {
         if (shape === 'interleaved') {
           locked = true;
-          addLog(now, 'good', 'WRITE-LOCK HELD — fsyncLock acquired. Further writes block.');
+          lockUntil = now + HOLD_S * 1000; /* frozen v7 hold: 3.0 s */
+          addLog(now, 'good', 'WRITE-LOCK HELD — fsyncLock acquired. Held for 3.0 s (frozen v7 hold); writes issued now stall on it.');
         } else {
           revoked = true;
           addLog(now, 'good', 'ROLE REVOKED — attacker identity learned from currentOp. Further commands fail with code 13.');
         }
         stopAt = null;
+      }
+      /* --- write-lock hold expires (frozen v7: 3.0 s); the lock is a
+             hold, not a permanent block — after it releases, the
+             watcher can re-escalate and re-lock if the attack is
+             still going. A stalled batch the re-kill never caught
+             resumes now. --- */
+      if (locked && lockUntil !== null && now >= lockUntil) {
+        locked = false; lockUntil = null;
+        suspended = false; bandStreak = 0;
+        addLog(now, 'info', 'WRITE-LOCK RELEASED after 3.0 s hold — re-escalation watch resumes.');
+        if (pendingRansom) {
+          pendingRansom = false;
+          noteEvent(now + dDrop, { n: 1, vw: 0, ransom: 1 });
+          addLog(now, 'info', 'Ransom note inserted (collection _ransom_note).');
+        }
       }
       /* --- score + bands --- */
       var res = computeScore(now);
@@ -385,7 +444,8 @@
     { v: 'v3', val: 23.78, note: '' },
     { v: 'v4', val: 26.16, note: '' },
     { v: 'v5', val: 42.74, note: 'fast shapes only' },
-    { v: 'v6', val: 48.80, note: '' }
+    { v: 'v6', val: 48.80, note: '' },
+    { v: 'v7', val: 48.22, note: '' }
   ];
 
   /* ---------- UI ---------- */
@@ -415,7 +475,7 @@
     var box = el('shapeInfo');
     box.innerHTML = '';
     var strong = document.createElement('strong');
-    strong.textContent = s.name + ' — lab median ' + pct1(s.median) + '% saved by prevention (v6). ';
+    strong.textContent = s.name + ' — lab median ' + pct1(s.median) + '% saved by prevention (v7). ';
     var span = document.createElement('span');
     span.textContent = s.desc + ' Lab time-to-detect median: ' + LAB_TTA[state.shape] + ' ms. Playback: ' + s.speedLabel + '.';
     box.appendChild(strong);
@@ -530,7 +590,12 @@
       s.innerHTML = 'Detect-only: nothing acted, so nothing was saved — the lab measured <strong>0.00%</strong> median for detect-only on every shape. ';
     } else {
       var diff = r.savedPct - r.labMedian;
-      s.innerHTML = 'Lab median for this shape (v6, n=' + n + '): <strong>' + pct1(r.labMedian) + '%</strong>. This run: <strong>' + pct1(r.savedPct) + '%</strong> (' + (diff >= 0 ? '+' : '') + pct1(diff) + ' vs the median — runs vary a few points, like the lab). Max score ' + r.maxScore.toFixed(1) + '; lab time-to-detect median ' + r.labTta + ' ms. ';
+      s.innerHTML = 'Lab median for this shape (v7, n=' + n + '): <strong>' + pct1(r.labMedian) + '%</strong>. This run: <strong>' + pct1(r.savedPct) + '%</strong> (' + (diff >= 0 ? '+' : '') + pct1(diff) + ' vs the median — runs vary a few points, like the lab). Max score ' + r.maxScore.toFixed(1) + '; lab time-to-detect median ' + r.labTta + ' ms. ';
+    }
+    if (r.shape === 'fast_delete' && r.mode === 'graded') {
+      var warn = document.createElement('span');
+      warn.textContent = 'Treat this median as unstable: the v8 probe (369 runs, matched seeds) measured 39.21% at the same hold 3.0 and 47.50% at hold 1.0 — paired difference −4.83, p=0.766, i.e. noise. This shape spans 0–83% run to run; the first throttle kill, not the lock, decides it.';
+      cmp.appendChild(warn);
     }
     var note = document.createElement('span');
     note.textContent = 'Saved % uses the lab metric: documents present at the end vs a no-defence run, over attempted docs (' + fmt(r.attempted) + ').';
@@ -548,7 +613,7 @@
       var wrap = document.createElement('div');
       wrap.className = 'prog-bar-wrap';
       var bar = document.createElement('div');
-      bar.className = 'prog-bar' + (p.v === 'v5' ? ' v5' : p.v === 'v6' ? ' v6' : '');
+      bar.className = 'prog-bar' + (p.v === 'v5' ? ' v5' : p.v === 'v7' ? ' v7' : '');
       bar.style.height = (p.val / max * 100) + '%';
       wrap.appendChild(bar);
       var val = document.createElement('span');
